@@ -1,9 +1,67 @@
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
 import yfinance as yf
 import requests
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
+
+
+# Helper: Find ticker symbol from company name using Yahoo search
+def search_symbol_from_name(query):
+    url = "https://query1.finance.yahoo.com/v1/finance/search"
+    params = {
+        "q": query,
+        "quotesCount": 1,
+        "newsCount": 0
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+    response = requests.get(url, params=params, headers=headers)
+    data = response.json()
+
+    quotes = data.get("quotes")
+    if quotes and len(quotes) > 0:
+        return quotes[0].get("symbol")
+    return None
+
+@app.route('/stock/search')
+def get_stock_search():
+    query = request.args.get('q')
+    if not query:
+        return jsonify({"error": "Query parameter 'q' is required"}), 400
+
+    symbol = search_symbol_from_name(query)
+    if not symbol:
+        return jsonify({"error": "No matching stock found"}), 404
+
+    try:
+        stock = yf.Ticker(symbol)
+        info = stock.info
+
+        return jsonify({
+            "symbol": symbol,
+            "longName": info.get('longName'),
+            "previousClose": info.get('previousClose'),
+            "open": info.get('open'),
+            "bid": info.get('bid'),
+            "ask": info.get('ask'),
+            "daysRange": f"{info.get('dayLow', 'N/A')} - {info.get('dayHigh', 'N/A')}",
+            "52WeekRange": f"{info.get('fiftyTwoWeekLow', 'N/A')} - {info.get('fiftyTwoWeekHigh', 'N/A')}",
+            "volume": info.get('volume'),
+            "avgVolume": info.get('averageVolume'),
+            "marketCap": info.get('marketCap'),
+            "beta": info.get('beta'),
+            "peRatio": info.get('trailingPE'),
+            "eps": info.get('trailingEps'),
+            "earningsDate": str(info.get('earningsDate')),
+            "dividendYield": info.get('dividendYield'),
+            "targetEstimate": info.get('targetMeanPrice')
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/stock/summary/<symbol>')
 def get_stock_summary(symbol):
